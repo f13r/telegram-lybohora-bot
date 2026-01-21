@@ -14,6 +14,8 @@ import {
 } from './utils.js';
 import { loadSubscribers, saveSubscribers, loadLastState, saveLastState, loadGroup, saveGroup } from './storage.js';
 
+const ADMIN_CHAT_ID = 433221506;
+
 dotenv.config();
 
 // --- Configuration ---
@@ -57,7 +59,7 @@ async function fetchGroupFromApi(): Promise<string | null> {
 
         const accounts = data?.['hydra:member'] ?? [];
         const account = accounts.find((a: any) => a.buildingName === BUILDING_NAME);
-        
+
         if (!account?.chergGpv) {
             console.error(`Building ${BUILDING_NAME} not found in API response`);
             return null;
@@ -80,26 +82,26 @@ async function fetchGroupFromApi(): Promise<string | null> {
 async function checkAndUpdateGroup(): Promise<void> {
     try {
         const newGroup = await fetchGroupFromApi();
-        
+
         if (newGroup && newGroup !== GROUP) {
             const oldGroup = GROUP;
             GROUP = newGroup;
             saveGroup(newGroup);
-            
+
             console.log(`Group changed: ${oldGroup} -> ${newGroup}`);
-            
+
             // Notify subscribers about group change and send new schedule
-            const changeMessage = 
+            const changeMessage =
                 `⚠️ *Увага! Зміна групи*\n\n` +
                 `Вашу групу було змінено:\n` +
                 `${formatGroupEmoji(oldGroup)} ➡️ ${formatGroupEmoji(newGroup)}\n\n` +
                 `📋 Новий графік:\n`;
-            
+
             try {
                 const { fullMessage } = await buildScheduleMessage();
                 const fullNotification = changeMessage + fullMessage;
-                
-                for (const chatId of subscribers) {
+
+                for (const [chatId] of subscribers) {
                     try {
                         await bot.telegram.sendMessage(chatId, fullNotification, { parse_mode: 'Markdown' });
                     } catch (err: any) {
@@ -122,25 +124,48 @@ async function checkAndUpdateGroup(): Promise<void> {
 
 // --- Dynamic keyboards based on subscription status ---
 
+function getUserFullName(ctx: Context): string {
+    const from = ctx.from;
+    if (!from) return 'Unknown';
+    const parts = [from.first_name, from.last_name].filter(Boolean);
+    return parts.join(' ') || from.username || 'Unknown';
+}
+
 function getReplyKeyboard(chatId: number) {
     const isSubscribed = subscribers.has(chatId);
-    return Markup.keyboard([
+    const isAdmin = chatId === ADMIN_CHAT_ID;
+
+    const rows = [
         ['📊 Статус', '📋 Графік'],
         ['🏠 Моя група', isSubscribed ? '🔕 Відписатись' : '🔔 Підписатись'],
-    ]).resize();
+    ];
+
+    if (isAdmin) {
+        rows.push(['🔧 Debug']);
+    }
+
+    return Markup.keyboard(rows).resize();
 }
 
 function getInlineMenu(chatId: number) {
     const isSubscribed = subscribers.has(chatId);
-    return Markup.inlineKeyboard([
+    const isAdmin = chatId === ADMIN_CHAT_ID;
+
+    const buttons = [
         [Markup.button.callback('📊 Статус', 'status')],
         [Markup.button.callback('📋 Графік', 'check')],
         [Markup.button.callback('🏠 Моя група', 'mygroup')],
-        [isSubscribed 
+        [isSubscribed
             ? Markup.button.callback('🔕 Відписатись', 'unsubscribe')
             : Markup.button.callback('🔔 Підписатись', 'subscribe')
         ],
-    ]);
+    ];
+
+    if (isAdmin) {
+        buttons.push([Markup.button.callback('🔧 Debug', 'debug')]);
+    }
+
+    return Markup.inlineKeyboard(buttons);
 }
 
 // --- API Functions ---
@@ -283,7 +308,9 @@ function handleSubscribe(ctx: Context) {
     if (subscribers.has(chatId)) {
         return ctx.reply('ℹ️ Ви вже підписані на розсилку.');
     }
-    subscribers.add(chatId);
+
+    const name = getUserFullName(ctx);
+    subscribers.set(chatId, { chatId, name });
     saveSubscribers(subscribers);
     ctx.reply('✅ Ви підписані на розсилку.', getReplyKeyboard(chatId));
 }
@@ -292,8 +319,8 @@ function handleUnsubscribe(ctx: Context) {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
 
-    console.log(`Unsubscribe request from chatId: ${chatId}, subscribers: [${[...subscribers].join(', ')}]`);
-    
+    console.log(`Unsubscribe request from chatId: ${chatId}, subscribers: [${[...subscribers.keys()].join(', ')}]`);
+
     if (!subscribers.has(chatId)) {
         return ctx.reply('ℹ️ Ви не підписані на розсилку.');
     }
@@ -302,16 +329,40 @@ function handleUnsubscribe(ctx: Context) {
     ctx.reply('❌ Ви відписані від розсилки.', getReplyKeyboard(chatId));
 }
 
+function handleDebug(ctx: Context) {
+    const chatId = ctx.chat?.id;
+    if (chatId !== ADMIN_CHAT_ID) {
+        return ctx.reply('⛔ Доступ заборонено');
+    }
+
+    const subscribersList = [...subscribers.values()];
+    const subscribersInfo = subscribersList.length > 0
+        ? subscribersList.map(s => `  • ${s.name} (\`${s.chatId}\`)`).join('\n')
+        : '  (немає)';
+
+    const info = [
+        `📊 *Debug Info*`,
+        ``,
+        `👥 *Підписники (${subscribersList.length}):*`,
+        subscribersInfo,
+        ``,
+        `🏠 *Група:* \`${GROUP}\``,
+        `📄 *Last State:* ${lastState ? '✅ set' : '❌ null'}`,
+    ].join('\n');
+
+    ctx.reply(info, { parse_mode: 'Markdown' });
+}
+
 async function handleMyGroup(ctx: Context) {
     try {
         const newGroup = await fetchGroupFromApi();
-        
+
         if (newGroup) {
             if (newGroup !== GROUP) {
                 const oldGroup = GROUP;
                 GROUP = newGroup;
                 saveGroup(newGroup);
-                
+
                 await ctx.reply(
                     `⚠️ *Групу оновлено!*\n\n` +
                     `Було: ${formatGroupEmoji(oldGroup)}\n` +
@@ -351,12 +402,12 @@ async function checkAndSend() {
             console.log('Schedule changed detected!');
             console.log('Previous state:', JSON.stringify(lastState));
             console.log('New state:', JSON.stringify(scheduleContent));
-            
+
             lastState = scheduleContent;
             saveLastState(scheduleContent);
-            
+
             // Send full message (with timestamp) to all subscribers
-            for (const chatId of subscribers) {
+            for (const [chatId] of subscribers) {
                 try {
                     await bot.telegram.sendMessage(chatId, fullMessage, { parse_mode: 'Markdown' });
                 } catch (err: any) {
@@ -396,6 +447,7 @@ bot.hears('📋 Графік', handleCheckCommand);
 bot.hears('🏠 Моя група', handleMyGroup);
 bot.hears('🔔 Підписатись', handleSubscribe);
 bot.hears('🔕 Відписатись', handleUnsubscribe);
+bot.hears('🔧 Debug', handleDebug);
 
 // --- Command handlers ---
 
@@ -404,6 +456,7 @@ bot.command('status', handleStatusCommand);
 bot.command('mygroup', handleMyGroup);
 bot.command('subscribe', handleSubscribe);
 bot.command('unsubscribe', handleUnsubscribe);
+bot.command('debug', handleDebug);
 
 // --- Button callback handlers ---
 
@@ -430,6 +483,11 @@ bot.action('unsubscribe', async (ctx) => {
 bot.action('mygroup', async (ctx) => {
     await ctx.answerCbQuery();
     await handleMyGroup(ctx);
+});
+
+bot.action('debug', async (ctx) => {
+    await ctx.answerCbQuery();
+    handleDebug(ctx);
 });
 
 // --- Cron jobs ---
@@ -459,7 +517,7 @@ async function startBot() {
         saveGroup(GROUP);
     }
     console.log(`Using group: ${GROUP}`);
-    
+
     await bot.launch();
     console.log('🤖 Bot started');
 }
