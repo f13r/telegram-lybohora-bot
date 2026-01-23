@@ -13,6 +13,7 @@ import {
     formatInfoTimestamp,
     calculateTotalHours,
     parseGroupFromApi,
+    formatHours,
 } from './utils.js';
 import { loadSubscribers, saveSubscribers, loadLastState, saveLastState, loadGroup, saveGroup } from './storage.js';
 
@@ -208,6 +209,10 @@ function buildScheduleContent(todayGroupText: string, tomorrowGroupText: string 
         todayTimes.forEach(t => {
             content += `⏱️ ${t}\n`;
         });
+        
+        // Calculate and add total hours for today
+        const totalHours = calculateTotalHours(todayTimes);
+        content += `\n⏱️ ${formatHours(totalHours)}\n`;
     } else {
         // Check if electricity is available all day
         if (todayGroupText.includes('Електроенергія є')) {
@@ -228,10 +233,7 @@ function buildScheduleContent(todayGroupText: string, tomorrowGroupText: string 
             
             // Calculate and add total hours
             const totalHours = calculateTotalHours(tomorrowTimes);
-            const hoursText = totalHours % 1 === 0 
-                ? `${totalHours} годин` 
-                : `${totalHours.toFixed(1)} годин`;
-            content += `(${hoursText})\n`;
+            content += `\n⏱️ ${formatHours(totalHours)}\n`;
         } else if (tomorrowGroupText.includes('Електроенергія є')) {
             content += '\n📅 Завтра: ✅ Електроенергія є весь день\n';
         }

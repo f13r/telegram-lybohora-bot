@@ -80,6 +80,57 @@ export function formatDuration(minutes: number): string {
 }
 
 /**
+ * Format hours with correct Ukrainian pluralization
+ * Rules:
+ * - 1, 21, 31, etc. (ends in 1, but not 11) → година
+ * - 2, 3, 4, 22, 23, 24, etc. (ends in 2-4, but not 12-14) → години
+ * - 5+, 11, 12, 13, 14, etc. → годин
+ * - Decimals: for 1.x, 2.x, 3.x, 4.x use "години", for 5+.x use "годин"
+ */
+export function formatHours(hours: number): string {
+    const wholeHours = Math.floor(hours);
+    const hasDecimal = hours % 1 !== 0;
+    
+    // Determine pluralization form
+    const lastDigit = wholeHours % 10;
+    const lastTwoDigits = wholeHours % 100;
+    
+    let pluralForm: string;
+    
+    if (hasDecimal) {
+        // For decimals, use pluralization based on whole number part
+        // Special case: 0.x uses "години"
+        if (wholeHours === 0) {
+            pluralForm = 'години'; // 0.5 години
+        } else if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+            pluralForm = 'годин';
+        } else if (lastDigit === 1) {
+            pluralForm = 'години'; // 1.5 години (not година)
+        } else if (lastDigit >= 2 && lastDigit <= 4) {
+            pluralForm = 'години';
+        } else {
+            pluralForm = 'годин';
+        }
+    } else {
+        // For whole numbers, use standard pluralization
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+            pluralForm = 'годин';
+        } else if (lastDigit === 1) {
+            pluralForm = 'година';
+        } else if (lastDigit >= 2 && lastDigit <= 4) {
+            pluralForm = 'години';
+        } else {
+            pluralForm = 'годин';
+        }
+    }
+    
+    // Format the number (with decimal if needed)
+    const formattedNumber = hasDecimal ? hours.toFixed(1) : wholeHours.toString();
+    
+    return `${formattedNumber} ${pluralForm}`;
+}
+
+/**
  * Parse time ranges from group text
  * e.g., "Група 1.2. Електроенергії немає з 05:30 до 12:30, з 16:00 до 21:00."
  * Returns array of { start, end } dayjs objects for the given baseDate

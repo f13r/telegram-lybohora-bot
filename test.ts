@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import isBetween from 'dayjs/plugin/isBetween.js';
-import { getElectricityStatus, formatDuration, parseOutageTimes, formatGroupEmoji, calculateTotalHours, parseGroupFromApi } from './src/utils.js';
+import { getElectricityStatus, formatDuration, parseOutageTimes, formatGroupEmoji, calculateTotalHours, parseGroupFromApi, formatHours } from './src/utils.js';
 import { TZ } from './src/types.js';
 
 dayjs.extend(utc);
@@ -562,6 +562,143 @@ parseGroupFromApiTests.forEach((test, idx) => {
         console.log(`   Input: ${JSON.stringify(test.input)}`);
         console.log(`   Expected: ${test.expected}`);
         console.log(`   Actual: ${result}`);
+    }
+});
+
+// Test formatHours
+console.log('\n=== FORMAT HOURS TESTS (Ukrainian pluralization) ===');
+
+const formatHoursTests = [
+    {
+        description: '1 hour - should be "1 година"',
+        input: 1,
+        expected: '1 година',
+    },
+    {
+        description: '2 hours - should be "2 години"',
+        input: 2,
+        expected: '2 години',
+    },
+    {
+        description: '3 hours - should be "3 години"',
+        input: 3,
+        expected: '3 години',
+    },
+    {
+        description: '4 hours - should be "4 години"',
+        input: 4,
+        expected: '4 години',
+    },
+    {
+        description: '5 hours - should be "5 годин"',
+        input: 5,
+        expected: '5 годин',
+    },
+    {
+        description: '10 hours - should be "10 годин"',
+        input: 10,
+        expected: '10 годин',
+    },
+    {
+        description: '11 hours - should be "11 годин" (special case)',
+        input: 11,
+        expected: '11 годин',
+    },
+    {
+        description: '12 hours - should be "12 годин" (special case)',
+        input: 12,
+        expected: '12 годин',
+    },
+    {
+        description: '13 hours - should be "13 годин" (special case)',
+        input: 13,
+        expected: '13 годин',
+    },
+    {
+        description: '14 hours - should be "14 годин" (special case)',
+        input: 14,
+        expected: '14 годин',
+    },
+    {
+        description: '21 hours - should be "21 година" (ends in 1, not 11)',
+        input: 21,
+        expected: '21 година',
+    },
+    {
+        description: '22 hours - should be "22 години" (ends in 2, not 12)',
+        input: 22,
+        expected: '22 години',
+    },
+    {
+        description: '24 hours - should be "24 години" (ends in 4, not 14)',
+        input: 24,
+        expected: '24 години',
+    },
+    {
+        description: '25 hours - should be "25 годин" (ends in 5)',
+        input: 25,
+        expected: '25 годин',
+    },
+    {
+        description: '1.5 hours - should be "1.5 години" (decimal, whole part is 1)',
+        input: 1.5,
+        expected: '1.5 години',
+    },
+    {
+        description: '2.5 hours - should be "2.5 години" (decimal, whole part is 2)',
+        input: 2.5,
+        expected: '2.5 години',
+    },
+    {
+        description: '3.5 hours - should be "3.5 години" (decimal, whole part is 3)',
+        input: 3.5,
+        expected: '3.5 години',
+    },
+    {
+        description: '4.5 hours - should be "4.5 години" (decimal, whole part is 4)',
+        input: 4.5,
+        expected: '4.5 години',
+    },
+    {
+        description: '5.5 hours - should be "5.5 годин" (decimal, whole part is 5)',
+        input: 5.5,
+        expected: '5.5 годин',
+    },
+    {
+        description: '13.5 hours - should be "13.5 годин" (decimal, whole part is 13)',
+        input: 13.5,
+        expected: '13.5 годин',
+    },
+    {
+        description: '21.5 hours - should be "21.5 години" (decimal, whole part ends in 1)',
+        input: 21.5,
+        expected: '21.5 години',
+    },
+    {
+        description: '22.5 hours - should be "22.5 години" (decimal, whole part is 22)',
+        input: 22.5,
+        expected: '22.5 години',
+    },
+    {
+        description: '0.5 hours - should be "0.5 години" (decimal, whole part is 0)',
+        input: 0.5,
+        expected: '0.5 години',
+    },
+];
+
+formatHoursTests.forEach((test, idx) => {
+    const result = formatHours(test.input);
+    const pass = result === test.expected;
+
+    if (pass) {
+        passCount++;
+        console.log(`${idx + 1}. ${test.description} | ${test.input} → "${result}" | PASS ✅`);
+    } else {
+        failCount++;
+        console.log(`${idx + 1}. ${test.description} | FAIL ❌`);
+        console.log(`   Input: ${test.input}`);
+        console.log(`   Expected: "${test.expected}"`);
+        console.log(`   Actual: "${result}"`);
     }
 });
 
