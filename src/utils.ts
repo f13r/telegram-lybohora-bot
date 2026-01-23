@@ -42,6 +42,31 @@ export function formatGroupEmoji(group: string): string {
 }
 
 /**
+ * Parse group from API response
+ * Handles both "12" (converts to "1.2") and "1.2" formats
+ * @param chergGpv - Group value from API (can be string "12", "1.2", or number)
+ * @returns Parsed group string in "X.Y" format, or null if invalid
+ */
+export function parseGroupFromApi(chergGpv: string | number | null | undefined): string | null {
+    if (!chergGpv) {
+        return null;
+    }
+
+    const gpv = String(chergGpv);
+    
+    if (gpv.includes('.')) {
+        // Already in "1.2" format
+        return gpv;
+    } else if (gpv.length >= 2) {
+        // Convert "12" to "1.2"
+        return `${gpv[0]}.${gpv[1]}`;
+    } else {
+        // Invalid format (single digit or empty)
+        return null;
+    }
+}
+
+/**
  * Format minutes as human-readable duration
  * e.g., 150 -> "2 год 30 хв"
  */
@@ -269,6 +294,38 @@ export function parseOutageTimes(groupText: string): string[] {
         .split(',')
         .map(t => t.replace(/з\s*/, '').replace(/\.$/, '').trim())
         .filter(t => t.length > 0);
+}
+
+/**
+ * Calculate total hours from outage time strings
+ * Input: ["08:00 до 10:00", "14:30 до 18:00"]
+ * Returns: total hours as number (e.g., 6.5)
+ */
+export function calculateTotalHours(outageTimes: string[]): number {
+    let totalMinutes = 0;
+    
+    for (const timeRange of outageTimes) {
+        const match = timeRange.match(/(\d{2}):(\d{2})\s+до\s+(\d{2}):(\d{2})/);
+        if (!match) continue;
+        
+        const [, startHour, startMin, endHour, endMin] = match;
+        const start = parseInt(startHour) * 60 + parseInt(startMin);
+        let end = parseInt(endHour) * 60 + parseInt(endMin);
+        
+        // Handle 24:00 as next day 00:00 (1440 minutes)
+        if (endHour === '24' && endMin === '00') {
+            end = 24 * 60; // 1440 minutes
+        }
+        
+        // Handle wrap-around (e.g., 23:00 до 01:00)
+        if (end < start) {
+            end += 24 * 60;
+        }
+        
+        totalMinutes += (end - start);
+    }
+    
+    return totalMinutes / 60;
 }
 
 /**

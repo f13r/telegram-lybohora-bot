@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import isBetween from 'dayjs/plugin/isBetween.js';
-import { getElectricityStatus, formatDuration, parseOutageTimes, formatGroupEmoji } from './src/utils.js';
+import { getElectricityStatus, formatDuration, parseOutageTimes, formatGroupEmoji, calculateTotalHours, parseGroupFromApi } from './src/utils.js';
 import { TZ } from './src/types.js';
 
 dayjs.extend(utc);
@@ -393,6 +393,175 @@ parseOutageTimesTests.forEach((test, idx) => {
         console.log(`   Input: ${test.input}`);
         console.log(`   Expected: ${JSON.stringify(test.expected)}`);
         console.log(`   Actual: ${JSON.stringify(result)}`);
+    }
+});
+
+// Test calculateTotalHours
+console.log('\n=== CALCULATE TOTAL HOURS TESTS ===');
+
+const calculateTotalHoursTests = [
+    {
+        description: 'Single outage - whole hours',
+        input: ['08:00 до 10:00'],
+        expected: 2,
+    },
+    {
+        description: 'Single outage - with minutes',
+        input: ['08:30 до 10:30'],
+        expected: 2,
+    },
+    {
+        description: 'Single outage - half hour',
+        input: ['08:00 до 08:30'],
+        expected: 0.5,
+    },
+    {
+        description: 'Multiple outages - whole hours',
+        input: ['08:00 до 10:00', '14:00 до 18:00'],
+        expected: 6,
+    },
+    {
+        description: 'Multiple outages - with minutes (example from user)',
+        input: ['00:00 до 04:00', '07:30 до 11:00', '14:30 до 18:00', '21:30 до 24:00'],
+        expected: 13.5,
+    },
+    {
+        description: 'Outage ending at 24:00',
+        input: ['22:00 до 24:00'],
+        expected: 2,
+    },
+    {
+        description: 'Outage starting at 00:00',
+        input: ['00:00 до 02:00'],
+        expected: 2,
+    },
+    {
+        description: 'Outage spanning midnight (23:00 to 01:00)',
+        input: ['23:00 до 01:00'],
+        expected: 2,
+    },
+    {
+        description: 'Multiple outages with various durations',
+        input: ['00:00 до 02:00', '05:30 до 09:15', '12:00 до 14:30'],
+        expected: 2 + 3.75 + 2.5, // 8.25
+    },
+    {
+        description: 'Empty array',
+        input: [],
+        expected: 0,
+    },
+    {
+        description: 'Complex schedule - all day outages',
+        input: ['00:00 до 06:00', '12:00 до 18:00', '22:00 до 24:00'],
+        expected: 6 + 6 + 2, // 14
+    },
+];
+
+calculateTotalHoursTests.forEach((test, idx) => {
+    const result = calculateTotalHours(test.input);
+    const pass = Math.abs(result - test.expected) < 0.01; // Allow small floating point differences
+
+    if (pass) {
+        passCount++;
+        console.log(`${idx + 1}. ${test.description} | ${test.input.join(', ')} = ${result} год | PASS ✅`);
+    } else {
+        failCount++;
+        console.log(`${idx + 1}. ${test.description} | FAIL ❌`);
+        console.log(`   Input: [${test.input.join(', ')}]`);
+        console.log(`   Expected: ${test.expected} год`);
+        console.log(`   Actual: ${result} год`);
+    }
+});
+
+// Test parseGroupFromApi
+console.log('\n=== PARSE GROUP FROM API TESTS ===');
+
+const parseGroupFromApiTests = [
+    {
+        description: 'String format "12" should convert to "1.2"',
+        input: '12',
+        expected: '1.2',
+    },
+    {
+        description: 'String format "1.2" should remain "1.2"',
+        input: '1.2',
+        expected: '1.2',
+    },
+    {
+        description: 'Number format 12 should convert to "1.2"',
+        input: 12,
+        expected: '1.2',
+    },
+    {
+        description: 'Number format 34 should convert to "3.4"',
+        input: 34,
+        expected: '3.4',
+    },
+    {
+        description: 'String "23" should convert to "2.3"',
+        input: '23',
+        expected: '2.3',
+    },
+    {
+        description: 'String "1.5" should remain "1.5"',
+        input: '1.5',
+        expected: '1.5',
+    },
+    {
+        description: 'String "2.1" should remain "2.1"',
+        input: '2.1',
+        expected: '2.1',
+    },
+    {
+        description: 'Single digit "1" should return null',
+        input: '1',
+        expected: null,
+    },
+    {
+        description: 'Empty string should return null',
+        input: '',
+        expected: null,
+    },
+    {
+        description: 'null should return null',
+        input: null,
+        expected: null,
+    },
+    {
+        description: 'undefined should return null',
+        input: undefined,
+        expected: null,
+    },
+    {
+        description: 'Number 0 should return null (single digit)',
+        input: 0,
+        expected: null,
+    },
+    {
+        description: 'Number 5 should return null (single digit)',
+        input: 5,
+        expected: null,
+    },
+    {
+        description: 'String "123" should convert to "1.2" (takes first 2 digits)',
+        input: '123',
+        expected: '1.2',
+    },
+];
+
+parseGroupFromApiTests.forEach((test, idx) => {
+    const result = parseGroupFromApi(test.input as any);
+    const pass = result === test.expected;
+
+    if (pass) {
+        passCount++;
+        console.log(`${idx + 1}. ${test.description} | Input: ${JSON.stringify(test.input)} → ${result} | PASS ✅`);
+    } else {
+        failCount++;
+        console.log(`${idx + 1}. ${test.description} | FAIL ❌`);
+        console.log(`   Input: ${JSON.stringify(test.input)}`);
+        console.log(`   Expected: ${test.expected}`);
+        console.log(`   Actual: ${result}`);
     }
 });
 

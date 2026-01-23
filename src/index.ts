@@ -11,6 +11,8 @@ import {
     formatElectricityStatus,
     parseOutageTimes,
     formatInfoTimestamp,
+    calculateTotalHours,
+    parseGroupFromApi,
 } from './utils.js';
 import { loadSubscribers, saveSubscribers, loadLastState, saveLastState, loadGroup, saveGroup } from './storage.js';
 
@@ -65,9 +67,12 @@ async function fetchGroupFromApi(): Promise<string | null> {
             return null;
         }
 
-        // Convert "12" to "1.2"
-        const gpv = account.chergGpv;
-        const group = `${gpv[0]}.${gpv[1]}`;
+        const group = parseGroupFromApi(account.chergGpv);
+        if (!group) {
+            console.error(`Invalid group format: ${account.chergGpv}`);
+            return null;
+        }
+        
         console.log(`Fetched group from API: ${group}`);
         return group;
     } catch (err) {
@@ -220,6 +225,13 @@ function buildScheduleContent(todayGroupText: string, tomorrowGroupText: string 
             tomorrowTimes.forEach(t => {
                 content += `⏱️ ${t}\n`;
             });
+            
+            // Calculate and add total hours
+            const totalHours = calculateTotalHours(tomorrowTimes);
+            const hoursText = totalHours % 1 === 0 
+                ? `${totalHours} годин` 
+                : `${totalHours.toFixed(1)} годин`;
+            content += `(${hoursText})\n`;
         } else if (tomorrowGroupText.includes('Електроенергія є')) {
             content += '\n📅 Завтра: ✅ Електроенергія є весь день\n';
         }
@@ -305,11 +317,15 @@ function handleSubscribe(ctx: Context) {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
 
+    const name = getUserFullName(ctx);
+    
     if (subscribers.has(chatId)) {
+        // Update name in case user changed it in Telegram
+        subscribers.set(chatId, { chatId, name });
+        saveSubscribers(subscribers);
         return ctx.reply('ℹ️ Ви вже підписані на розсилку.');
     }
 
-    const name = getUserFullName(ctx);
     subscribers.set(chatId, { chatId, name });
     saveSubscribers(subscribers);
     ctx.reply('✅ Ви підписані на розсилку.', getReplyKeyboard(chatId));
